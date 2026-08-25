@@ -1699,7 +1699,7 @@ a.shellCall:active{transform:scale(.94)}
 
 </style>
 <script>window.__FORCE_DEMO__ = true;</script>
-<script>window.BUILD = "vc828750f";</script>
+<script>window.BUILD = "vdbf5e65e";</script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", function(){
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
@@ -6569,6 +6569,39 @@ function demoHoliDefault(){
   return { list: [], off: true, remind: 1, hour: 20, minute: 0 };
 }
 
+// The public Pages demo starts with the timetable supplied in docs/我的课表-简短.csv.
+// It is only a first-run convenience: demoLoad() never replaces a non-empty
+// timetable, and an explicit Reset still returns to the blank state.
+function demoSeedTimetable(){
+  var rows = [
+    [10,  0,  2,  60,  0, "EM Tutorial",      "B111"],
+    [12, 30,  2, 180,  1, "MicroP Lab",       "E002B(LAB)"],
+    [16,  0,  2, 120,  0, "EM Lecture",       "H120"],
+    [ 8,  0,  4, 120,  0, "MicroP Lecture",   "EDK2"],
+    [10,  0,  4, 120,  0, "Numerical Lecture","EDK2"],
+    [13,  0,  4, 180,  2, "DSD Lab",          "E018A(LAB)"],
+    [13,  0,  4, 180,  1, "Analog Lab",       "E202A(TELECOM)"],
+    [16,  0,  4,  60,  0, "Analog Tutorial",  "E111"],
+    [12,  0,  8,  60,  0, "MicroP Lecture",   "E111"],
+    [13,  0,  8,  60,  0, "Numerical Tutorial","B213"],
+    [16,  0,  8, 120,  0, "Analog Lecture",   "E111"],
+    [ 8,  0, 16,  60,  0, "Analog Lecture",   "E111"],
+    [ 9,  0, 16, 180,  2, "EM Lab",            "E202A(TELECOM)"],
+    [13,  0, 16, 120,  0, "DSD Lecture",      "E213"],
+    [15,  0, 16,  60,  0, "EM Lecture",       "E111"],
+    [16,  0, 16,  60,  0, "DSD Tutorial",     "E214"],
+    [17,  0, 16,  60,  0, "Numerical Lecture","EDK2"],
+    [14, 30, 32,  60,  0, "DSD Lecture",      "E111"]
+  ];
+  return rows.map(function(r, i){
+    return {
+      id:i + 1, hour:r[0], minute:r[1], days:r[2], dur:r[3],
+      leads:[10], weekRule:r[4], channels:3, owner:1,
+      date:"", enabled:true, label:r[5], note:r[6]
+    };
+  });
+}
+
 function demoSeedEmpty(){
   return { seedVer: DEMO_SEED_VER, nextId: 1, mode:"normal", roles: 0, quiet: false,
            rooms: [],
@@ -6580,15 +6613,24 @@ function demoSeedEmpty(){
 
 function demoSeed(){ return demoSeedEmpty(); }
 
+function demoSeedInitial(){
+  var d = demoSeedEmpty();
+  d.mode = "student";
+  d.roles = 2;
+  d.alarms = demoSeedTimetable();
+  d.nextId = d.alarms.length + 1;
+  return d;
+}
+
 // This identifies the shape of fresh demo data. It must never be used as a
 // reason to throw away an existing timetable: old data is user data, not seed data.
-var DEMO_SEED_VER = 3;
+var DEMO_SEED_VER = 4;
 
 function demoLoad(){
   var raw = "";
   try { raw = localStorage.getItem("clockDemo") || ""; }
-  catch(e){ DB = demoSeed(); return; }
-  if(!raw){ DB = demoSeed(); return; }
+  catch(e){ DB = demoSeedInitial(); return; }
+  if(!raw){ DB = demoSeedInitial(); return; }
 
   try{
     DB = JSON.parse(raw);
@@ -6615,6 +6657,14 @@ function demoLoad(){
 
     if(oldVer !== DEMO_SEED_VER){
       demoArchive(raw, "seed-migration");
+      // The previous public build started empty. Upgrade only that empty
+      // first-run state; a user's real timetable is always left untouched.
+      if(DB.alarms.length === 0){
+        DB.mode = "student";
+        DB.roles = 2;
+        DB.alarms = demoSeedTimetable();
+        DB.nextId = DB.alarms.length + 1;
+      }
       localStorage.setItem("clockDemo", JSON.stringify(DB));
     }
   }catch(e){
