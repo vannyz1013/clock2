@@ -1699,7 +1699,7 @@ a.shellCall:active{transform:scale(.94)}
 
 </style>
 <script>window.__FORCE_DEMO__ = true;</script>
-<script>window.BUILD = "vf3302fa4";</script>
+<script>window.BUILD = "va47b334f";</script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", function(){
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
@@ -1927,6 +1927,14 @@ if ("serviceWorker" in navigator) addEventListener("load", function(){
     <input type="file" id="imFileInput" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
   </div>
   <div class="uphint" id="imUpHint"></div>
+
+  <div class="uprow">
+    <button class="btn-s upbtn" id="imBackup"></button>
+    <button class="btn-s upbtn" id="imRestore"></button>
+    <button class="btn-s upbtn" id="imRecover"></button>
+    <input type="file" id="imBackupInput" accept=".json,application/json" hidden>
+  </div>
+  <div class="uphint" id="imBackupHint"></div>
 
   <label class="f"><span id="lbImText"></span>
     <textarea id="imText"></textarea>
@@ -2992,6 +3000,16 @@ zh: {
   imFile  :"&#128193; 选档案",
   imDemo  :"&#128196; 看范例",
   imGen   :"生成一周",
+  imBackup :"下载课表备份",
+  imRestore:"恢复课表备份",
+  imRecover:"恢复上一份本地保存",
+  imBackupHint:"备份只保存在这台手机，换网址前先下载。",
+  imBackupOk:"已下载课表备份",
+  imRestoreOk:function(n){ return "已恢复 "+n+" 个课表项目"; },
+  imBackupNeed:"当前没有可备份的本地课表",
+  imRestoreBad:"这不是有效的 Pocket 课表备份",
+  imRestoreAsk:"恢复前会保留当前课表。继续吗？",
+  imNoBackup:"没有找到上一份本地备份",
   imUpHint:"支援 <b>.csv</b> / <b>.txt</b>（Excel、Google Sheets 都可以「另存为 CSV」）。<br>" +
            "或者直接从 Excel <b>复制整个表格</b>，贴到下面那格 &mdash; 两种格式都读得懂。",
   imLabel :"时间表内容",
@@ -3045,6 +3063,7 @@ zh: {
           + "你的闹钟都还在装置里。装置可能关机了、正在重开、或不在同一个网路。",
   lostRetry:"重试",
   demoRetry:"重试连线", demoReset:"回复范例资料",
+  demoResetAsk:"确定要重置吗？你的本地课表会先备份。",
   demoResetOk:"已经回复成范例课表",
   tTimeSynced:"已经用手机的时间帮装置校准",
   netAp    : function(n){ return "热点模式 &middot; " + n; },
@@ -3875,6 +3894,17 @@ en: {
           + "your alarms are still on the device. It may be off, rebooting, or on another network.",
   lostRetry:"Retry",
   demoRetry:"Retry connection", demoReset:"Reset sample data",
+  demoResetAsk:"Reset the local timetable? A backup will be kept first.",
+  imBackup :"Download backup",
+  imRestore:"Restore backup",
+  imRecover:"Restore last local copy",
+  imBackupHint:"Backups stay on this device. Download one before changing the app link.",
+  imBackupOk:"Timetable backup downloaded",
+  imRestoreOk:function(n){ return "Restored "+n+" timetable items"; },
+  imBackupNeed:"No local timetable is available to back up",
+  imRestoreBad:"That is not a valid Pocket timetable backup",
+  imRestoreAsk:"Your current timetable will be backed up before restoring. Continue?",
+  imNoBackup:"No previous local backup was found",
   demoResetOk:"Sample timetable restored",
   tTimeSynced:"Synced the device to your phone's clock",
   netAp    : function(n){ return "Hotspot mode &middot; " + n; },
@@ -6545,21 +6575,151 @@ function demoSeedEmpty(){
 
 function demoSeed(){ return demoSeedEmpty(); }
 
-// Bump this whenever the starting content changes -- old data in the browser resets itself
+// This identifies the shape of fresh demo data. It must never be used as a
+// reason to throw away an existing timetable: old data is user data, not seed data.
 var DEMO_SEED_VER = 3;
 
 function demoLoad(){
+  var raw = "";
+  try { raw = localStorage.getItem("clockDemo") || ""; }
+  catch(e){ DB = demoSeed(); return; }
+  if(!raw){ DB = demoSeed(); return; }
+
   try{
-    var raw = localStorage.getItem("clockDemo");
-    DB = raw ? JSON.parse(raw) : demoSeed();
-    // An old sample was stored (say a previous version shipped someone else's timetable) -> drop it
-    if(DB.seedVer !== DEMO_SEED_VER) DB = demoSeed();
-  }catch(e){ DB = demoSeed(); }
+    DB = JSON.parse(raw);
+    if(!DB || typeof DB !== "object") throw new Error("not an object");
+
+    // A build may change its seed version, but that is not permission to erase
+    // a real timetable. Keep every alarm and only repair missing metadata.
+    var oldVer = DB.seedVer;
+    if(!Array.isArray(DB.alarms)) DB.alarms = [];
+    if(!DB.nextId || !isFinite(DB.nextId)){
+      var maxId = 0;
+      DB.alarms.forEach(function(a){
+        var id = parseInt(a && a.id, 10);
+        if(isFinite(id) && id > maxId) maxId = id;
+      });
+      DB.nextId = maxId + 1;
+    }
+    if(!DB.mode) DB.mode = "normal";
+    if(!DB.sem) DB.sem = { enabled:false, start:"2026-01-01", weeks:14, weekStart:0, offOutside:true };
+    if(!DB.skips) DB.skips = [];
+    if(!DB.rooms) DB.rooms = [];
+    if(!DB.holi) DB.holi = demoHoliDefault();
+    DB.seedVer = DEMO_SEED_VER;
+
+    if(oldVer !== DEMO_SEED_VER){
+      demoArchive(raw, "seed-migration");
+      localStorage.setItem("clockDemo", JSON.stringify(DB));
+    }
+  }catch(e){
+    // Keep malformed data for recovery rather than silently destroying it.
+    demoArchive(raw, "invalid-data");
+    DB = demoSeed();
+  }
 }
+
+// One rolling recovery copy means a replace import, a migration, or a failed
+// save cannot turn into silent data loss. The explicit JSON backup below is the
+// portable copy for moving between different GitHub Pages hosts.
+function demoArchive(raw, reason){
+  if(!raw) return;
+  try{
+    localStorage.setItem("clockDemoRecovery", raw);
+    localStorage.setItem("clockDemoRecoveryAt", new Date().toISOString());
+    localStorage.setItem("clockDemoRecoveryWhy", String(reason || "change"));
+  }catch(e){}
+}
+
 function demoSave(){
   // Logged in -> store in the cloud; not logged in -> store on this phone
   if(!SYNC_OFF && CLOUD.on){ cloudScheduleSave(); return; }
-  try{ localStorage.setItem("clockDemo", JSON.stringify(DB)); }catch(e){}
+  try{
+    var next = JSON.stringify(DB);
+    var old = localStorage.getItem("clockDemo");
+    if(old && old !== next) demoArchive(old, "before-save");
+    localStorage.setItem("clockDemo", next);
+  }catch(e){}
+}
+
+function demoBackupReady(){
+  return !!(DEMO && DB && Array.isArray(DB.alarms));
+}
+
+function downloadDemoBackup(){
+  if(!demoBackupReady()){ toast(t("imBackupNeed")); return; }
+  try{
+    var payload = {
+      format: "pocket-timetable",
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data: DB
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "pocket-timetable-" + todayISO() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    toast(t("imBackupOk"));
+  }catch(e){ toast(t("tFileFail")); }
+}
+
+function restoreDemoData(data){
+  if(!data || typeof data !== "object" || !Array.isArray(data.alarms))
+    throw new Error("invalid timetable backup");
+  if(data.alarms.length > 50) data.alarms = data.alarms.slice(0, 50);
+  try{ demoArchive(localStorage.getItem("clockDemo"), "before-restore"); }catch(e){}
+  DB = data;
+  if(!DB.nextId || !isFinite(DB.nextId)){
+    var maxId = 0;
+    DB.alarms.forEach(function(a){
+      var id = parseInt(a && a.id, 10);
+      if(isFinite(id) && id > maxId) maxId = id;
+    });
+    DB.nextId = maxId + 1;
+  }
+  if(!DB.mode) DB.mode = "normal";
+  if(!DB.sem) DB.sem = { enabled:false, start:"2026-01-01", weeks:14, weekStart:0, offOutside:true };
+  if(!DB.skips) DB.skips = [];
+  if(!DB.rooms) DB.rooms = [];
+  if(!DB.holi) DB.holi = demoHoliDefault();
+  DB.seedVer = DEMO_SEED_VER;
+  demoSave();
+  closeSheets();
+  toast(t("imRestoreOk", DB.alarms.length));
+  pull().then(pullSem).then(pullSkips).then(pullRooms).then(pullHoli);
+}
+
+function restoreDemoBackupText(raw){
+  if(!demoBackupReady()){ toast(t("imBackupNeed")); return; }
+  if(!confirm(t("imRestoreAsk"))) return;
+  try{
+    var payload = JSON.parse(raw);
+    var data = payload && payload.data && Array.isArray(payload.data.alarms)
+      ? payload.data : payload;
+    restoreDemoData(data);
+  }catch(e){ toast(t("imRestoreBad")); }
+}
+
+function restoreDemoBackupFile(file){
+  var fr = new FileReader();
+  fr.onerror = function(){ toast(t("tFileFail")); };
+  fr.onload = function(){ restoreDemoBackupText(String(fr.result || "")); };
+  fr.readAsText(file);
+}
+
+function restoreDemoRecovery(){
+  if(!demoBackupReady()){ toast(t("imBackupNeed")); return; }
+  var raw = "";
+  try{ raw = localStorage.getItem("clockDemoRecovery") || ""; }catch(e){}
+  if(!raw){ toast(t("imNoBackup")); return; }
+  try{
+    restoreDemoBackupText(JSON.stringify({data: JSON.parse(raw)}));
+  }catch(e){ toast(t("imRestoreBad")); }
 }
 
 function enterDemo(){
@@ -6581,6 +6741,8 @@ function enterDemo(){
       '<button id="demoRetry">' + t("demoRetry") + '</button>' +
     '</div>';
   $("demoReset").onclick = function(){
+    if(!confirm(t("demoResetAsk"))) return;
+    try{ demoArchive(localStorage.getItem("clockDemo"), "manual-reset"); }catch(e){}
     DB = demoSeed();
     DB.alarms.forEach(function(a){ if(a.days === 0 && !a.date) a.date = todayISO(); });
     demoSave();
@@ -11134,6 +11296,15 @@ $("imFileInput").onchange = function(){
   this.value = "";          // picking the same file again should still fire
 };
 
+$("imBackup").onclick = downloadDemoBackup;
+$("imRestore").onclick = function(){ $("imBackupInput").click(); };
+$("imBackupInput").onchange = function(){
+  var f = this.files && this.files[0];
+  if(f) restoreDemoBackupFile(f);
+  this.value = "";
+};
+$("imRecover").onclick = restoreDemoRecovery;
+
 $("imDemo").onclick = function(){
   // The sample follows the language, like everything else on screen
   $("imText").value = lang === "zh" ?
@@ -11164,6 +11335,10 @@ $("imSave").onclick = function(){
   var rows = parseTable($("imText").value).filter(function(r){ return !r.err; });
   if(!rows.length){ toast(t("tNoData")); return; }
   rows.forEach(function(r){ r.leads = S.imLeads.slice(); });
+
+  if($("imMode").value === "replace" && DEMO && DB){
+    try{ demoArchive(localStorage.getItem("clockDemo"), "before-replace-import"); }catch(e){}
+  }
 
   api("/api/import", {
     method:"POST",
@@ -11311,7 +11486,11 @@ function applyStatic(){
   $("imFile").innerHTML      = t("imFile");
   $("imDemo").innerHTML      = t("imDemo");
   $("imGen").innerHTML       = t("imGen");
+  $("imBackup").innerHTML    = t("imBackup");
+  $("imRestore").innerHTML   = t("imRestore");
+  $("imRecover").innerHTML   = t("imRecover");
   $("imUpHint").innerHTML    = t("imUpHint");
+  $("imBackupHint").innerHTML = t("imBackupHint");
   $("lbImText").textContent  = t("imLabel");
   $("imText").placeholder    = t("imPh");
   $("imFmt").innerHTML       = t("imFmt");
