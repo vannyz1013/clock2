@@ -1699,7 +1699,7 @@ a.shellCall:active{transform:scale(.94)}
 
 </style>
 <script>window.__FORCE_DEMO__ = true;</script>
-<script>window.BUILD = "va47b334f";</script>
+<script>window.BUILD = "vc828750f";</script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", function(){
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
@@ -1932,6 +1932,7 @@ if ("serviceWorker" in navigator) addEventListener("load", function(){
     <button class="btn-s upbtn" id="imBackup"></button>
     <button class="btn-s upbtn" id="imRestore"></button>
     <button class="btn-s upbtn" id="imRecover"></button>
+    <button class="btn-s upbtn" id="imPaste"></button>
     <input type="file" id="imBackupInput" accept=".json,application/json" hidden>
   </div>
   <div class="uphint" id="imBackupHint"></div>
@@ -3003,6 +3004,7 @@ zh: {
   imBackup :"下载课表备份",
   imRestore:"恢复课表备份",
   imRecover:"恢复上一份本地保存",
+  imPaste:"贴上备份 JSON",
   imBackupHint:"备份只保存在这台手机，换网址前先下载。",
   imBackupOk:"已下载课表备份",
   imRestoreOk:function(n){ return "已恢复 "+n+" 个课表项目"; },
@@ -3010,6 +3012,7 @@ zh: {
   imRestoreBad:"这不是有效的 Pocket 课表备份",
   imRestoreAsk:"恢复前会保留当前课表。继续吗？",
   imNoBackup:"没有找到上一份本地备份",
+  imPastePrompt:"把备份 JSON 贴在这里：",
   imUpHint:"支援 <b>.csv</b> / <b>.txt</b>（Excel、Google Sheets 都可以「另存为 CSV」）。<br>" +
            "或者直接从 Excel <b>复制整个表格</b>，贴到下面那格 &mdash; 两种格式都读得懂。",
   imLabel :"时间表内容",
@@ -3898,6 +3901,7 @@ en: {
   imBackup :"Download backup",
   imRestore:"Restore backup",
   imRecover:"Restore last local copy",
+  imPaste:"Paste backup JSON",
   imBackupHint:"Backups stay on this device. Download one before changing the app link.",
   imBackupOk:"Timetable backup downloaded",
   imRestoreOk:function(n){ return "Restored "+n+" timetable items"; },
@@ -3905,6 +3909,7 @@ en: {
   imRestoreBad:"That is not a valid Pocket timetable backup",
   imRestoreAsk:"Your current timetable will be backed up before restoring. Continue?",
   imNoBackup:"No previous local backup was found",
+  imPastePrompt:"Paste the timetable backup JSON here:",
   demoResetOk:"Sample timetable restored",
   tTimeSynced:"Synced the device to your phone's clock",
   netAp    : function(n){ return "Hotspot mode &middot; " + n; },
@@ -11304,6 +11309,11 @@ $("imBackupInput").onchange = function(){
   this.value = "";
 };
 $("imRecover").onclick = restoreDemoRecovery;
+$("imPaste").onclick = function(){
+  if(!demoBackupReady()){ toast(t("imBackupNeed")); return; }
+  var raw = window.prompt(t("imPastePrompt"), "");
+  if(raw) restoreDemoBackupText(raw);
+};
 
 $("imDemo").onclick = function(){
   // The sample follows the language, like everything else on screen
@@ -11489,6 +11499,7 @@ function applyStatic(){
   $("imBackup").innerHTML    = t("imBackup");
   $("imRestore").innerHTML   = t("imRestore");
   $("imRecover").innerHTML   = t("imRecover");
+  $("imPaste").innerHTML     = t("imPaste");
   $("imUpHint").innerHTML    = t("imUpHint");
   $("imBackupHint").innerHTML = t("imBackupHint");
   $("lbImText").textContent  = t("imLabel");
