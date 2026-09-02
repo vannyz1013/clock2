@@ -1,7 +1,7 @@
 {
-  "name": "Pocket",
-  "short_name": "Pocket",
-  "description": "Class reminders: wakes you a few minutes before each class",
+  "name": "Pocket Scientific Calculator",
+  "short_name": "Pocket SC",
+  "description": "A scientific calculator, a grapher and a class timetable, on this phone",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
